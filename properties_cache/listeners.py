@@ -98,7 +98,40 @@ def update_properties_set(fnc, props):
     return UpdatePropertiesHandler
 
 
+def setup_self_handler(model, properties):
+    """This method setup handler to update cache on own signals"""
+    # setup signal for own model
+    class UpdateSelfHandler(object):
+        def __new__(cls, instance):
+            return cls.model.objects.filter(pk__in=[instance.pk])
+
+    UpdateSelfHandler.model = model
+    UpdateSelfHandler.properties = properties
+    UpdateSelfHandler.config = {
+    'model': model,
+    'properties': properties,
+    }
+
+    return UpdateSelfHandler
+
+
+def check_config(config):
+    """This method will check configuration and will fire exception
+    in case with wrong configuration keys"""
+
+    if not 'model' in config:
+        # Raise configuration error
+        raise Exception(u"You have to specify model which "\
+                        u"signal should be attached to")
+
+    if not 'properties' in config:
+        # Raise configuration error
+        raise Exception(u"You have to specify list of properties"\
+                        u" which should be updated")
+
+
 def setup_signals(base_class):
+    """Setup signals based from PropertiesCache configuration in any model"""
 
     # go trough all models and find out PropertiesCache configs
     for model in get_models():
@@ -109,21 +142,8 @@ def setup_signals(base_class):
 
             # parse configuration and setup signals
             config = model.PropertiesCache
-            properties = config.cached_properties
-
-            # setup signal for own model
-            class UpdateSelfHandler(object):
-                def __new__(cls, instance):
-                    return cls.model.objects.filter(pk__in=[instance.pk])
-
-            UpdateSelfHandler.model = model
-            UpdateSelfHandler.properties = properties
-            UpdateSelfHandler.config = {
-            'model': model,
-            'properties': properties,
-            }
-
-            config.update_self = UpdateSelfHandler
+            config.update_self = setup_self_handler(model,
+                                        config.cached_properties)
 
             # iterate over PropertiesCache class
             # and get all update handler functions
@@ -139,15 +159,7 @@ def setup_signals(base_class):
                 upd_func = val
                 upd_config = val.config
 
-                if not 'model' in upd_config:
-                    # TODO: Raise configuration error
-                    raise Exception(u"You have to specify model which "\
-                                    u"signal should be attached to")
-
-                if not 'properties' in upd_config:
-                    # TODO: Raise configuration error
-                    raise Exception(u"You have to specify list of properties"\
-                                    u" which should be updated")
+                check_config(upd_config)
 
                 target_model = upd_config['model']
                 target_props = upd_config['properties']
